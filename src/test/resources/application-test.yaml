@@ -1,0 +1,30 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:skytrack_ai_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+
+app:
+  openweather:
+    api-key: test
+    url: https://example.com/weather
+  aviationstack:
+    api-key: test
+    url: https://example.com/aviation
+  opensky:
+    base-url: https://example.com/opensky
+    username:
+    password:
+    cache-refresh-seconds: 60
+  gemini:
+    api-key: test
+    url: https://example.com/gemini
+  jwt:
+    secret: TestJwtSecretKeyForSkytrackAiMustBeAtLeast256BitsLong
+    expiration-ms: 86400000
