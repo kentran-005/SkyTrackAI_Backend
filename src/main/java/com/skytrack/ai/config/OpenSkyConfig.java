@@ -11,5 +11,5 @@ public class OpenSkyConfig {
     private String baseUrl = "https://opensky-network.org/api";
     private String username;
     private String password;
-    private int cacheRefreshSeconds = 60;
+    private int cacheRefreshSeconds = 20;
 }

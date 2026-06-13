@@ -2,6 +2,7 @@ package com.skytrack.ai.service;
 
 import com.skytrack.ai.config.OpenSkyConfig;
 import com.skytrack.ai.dto.FlightStateDto;
+import com.skytrack.ai.dto.RealtimeFlightStatusDto;
 import com.skytrack.ai.entity.RealtimeFlight;
 import com.skytrack.ai.repository.RealtimeFlightRepository;
 import jakarta.annotation.PostConstruct;
@@ -11,6 +12,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -29,6 +31,8 @@ public class OpenSkyService {
     private final RestClient.Builder restClientBuilder;
 
     private RestClient restClient;
+    private volatile LocalDateTime nextRefreshAllowedAt = LocalDateTime.MIN;
+    private volatile String lastFetchMessage = "Waiting for the first OpenSky refresh";
 
     @PostConstruct
     public void init() {
@@ -70,7 +74,11 @@ public class OpenSkyService {
 
         // 3. Nếu DB trống HOẶC dữ liệu đã quá cũ -> Gọi API OpenSky
         log.info("Dữ liệu DB trống hoặc quá cũ. Đang gọi API OpenSky...");
-        fetchAndSaveToDatabase();
+        if (LocalDateTime.now().isAfter(nextRefreshAllowedAt)) {
+            fetchAndSaveToDatabase();
+        } else {
+            log.debug("OpenSky refresh paused until {}", nextRefreshAllowedAt);
+        }
 
         // 4. Trả về dữ liệu mới vừa được cập nhật vào DB
         return mapEntitiesToDtos(realtimeFlightRepository.findAll());
@@ -81,6 +89,8 @@ public class OpenSkyService {
      */
     private synchronized void fetchAndSaveToDatabase() {
         if (this.restClient == null) return;
+        if (LocalDateTime.now().isBefore(nextRefreshAllowedAt)) return;
+
         try {
             String url = "/states/all?lamin=8&lamax=24&lomin=100&lomax=112";
 
@@ -109,13 +119,68 @@ public class OpenSkyService {
 
                     realtimeFlightRepository.flush();
 
+                    nextRefreshAllowedAt = now.plusSeconds(config.getCacheRefreshSeconds());
+                    lastFetchMessage = "Live OpenSky data";
                     log.info("✅ Đã lưu {} chuyến bay từ OpenSky vào Database", flightEntities.size());
                 } else {
+                    nextRefreshAllowedAt = now.plusSeconds(config.getCacheRefreshSeconds());
+                    lastFetchMessage = "OpenSky returned no aircraft for the configured area";
                     log.warn("⚠️ OpenSky trả về dữ liệu rỗng (Có thể khu vực này không có chuyến bay nào).");
                 }
+            } else {
+                nextRefreshAllowedAt = LocalDateTime.now().plusSeconds(config.getCacheRefreshSeconds());
+                lastFetchMessage = "OpenSky returned an invalid response. Showing cached traffic.";
+                log.warn("OpenSky response did not contain a states field.");
             }
+        } catch (RestClientResponseException e) {
+            if (e.getStatusCode().value() == 429) {
+                long retrySeconds = parseRetrySeconds(e);
+                nextRefreshAllowedAt = LocalDateTime.now().plusSeconds(retrySeconds);
+                lastFetchMessage = "OpenSky rate limit reached. Showing cached traffic.";
+                log.warn("OpenSky rate limited this server. Next refresh after {} seconds.", retrySeconds);
+                return;
+            }
+            nextRefreshAllowedAt = LocalDateTime.now().plusSeconds(config.getCacheRefreshSeconds());
+            lastFetchMessage = "OpenSky request failed with HTTP " + e.getStatusCode().value();
+            log.error("Failed to fetch OpenSky flights: HTTP {}", e.getStatusCode().value());
         } catch (Exception e) {
+            nextRefreshAllowedAt = LocalDateTime.now().plusSeconds(config.getCacheRefreshSeconds());
+            lastFetchMessage = "OpenSky is temporarily unavailable. Showing cached traffic.";
             log.error("Failed to fetch OpenSky flights", e);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public RealtimeFlightStatusDto getStatus() {
+        List<RealtimeFlight> flights = realtimeFlightRepository.findAll();
+        LocalDateTime lastUpdate = flights.stream()
+                .map(RealtimeFlight::getLastUpdated)
+                .filter(java.util.Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
+        long ageSeconds = lastUpdate == null
+                ? Long.MAX_VALUE
+                : ChronoUnit.SECONDS.between(lastUpdate, LocalDateTime.now());
+        boolean stale = lastUpdate == null || ageSeconds >= config.getCacheRefreshSeconds() * 2L;
+
+        return new RealtimeFlightStatusDto(
+                !stale,
+                stale,
+                flights.size(),
+                lastUpdate,
+                nextRefreshAllowedAt.equals(LocalDateTime.MIN) ? null : nextRefreshAllowedAt,
+                stale ? lastFetchMessage : "Live OpenSky data"
+        );
+    }
+
+    private long parseRetrySeconds(RestClientResponseException exception) {
+        String value = exception.getResponseHeaders() == null
+                ? null
+                : exception.getResponseHeaders().getFirst("x-rate-limit-retry-after-seconds");
+        try {
+            return Math.max(60, Long.parseLong(value));
+        } catch (Exception ignored) {
+            return 15 * 60;
         }
     }
 

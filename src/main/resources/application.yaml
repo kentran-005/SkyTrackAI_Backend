@@ -34,10 +34,10 @@ app:
     base-url: https://opensky-network.org/api
     username: tranthong1765@gmail.com
     password: Ken@091005
-    cache-refresh-seconds: 60          # Cập nhật dữ liệu mỗi 60 giây
+    cache-refresh-seconds: 60
 
   gemini:
-    api-key: AQ.Ab8RN6LD9TTCTe6vm4WylsgdSglZ2T-aTHO0M_fV34Fa1VQhmg
+    api-key: AQ.Ab8RN6I4bKyTE4qSU_MrixmCmiWoyc34zZBwzbSyUDj8x0GwcA
     url: https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent
 
   jwt:

@@ -37,6 +37,9 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request, response, authException) -> {
                             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
                         })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Forbidden");
+                        })
                 )
                 .authorizeHttpRequests(auth -> auth
                         // Cho phép tất cả request OPTIONS (CORS Preflight)
@@ -50,6 +53,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/flights/search").permitAll()
 
                         .requestMatchers(HttpMethod.GET, "/api/airports/**", "/api/airlines/**", "/api/flights/**", "/api/weather/**", "/api/realtime-flights/**", "/api/dashboard/**").permitAll()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/airports/**", "/api/airlines/**", "/api/flights/**", "/api/passengers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/airports/**", "/api/airlines/**", "/api/flights/**", "/api/passengers/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/airports/**", "/api/airlines/**", "/api/flights/**", "/api/passengers/**").hasRole("ADMIN")

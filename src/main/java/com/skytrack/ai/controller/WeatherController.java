@@ -18,4 +18,15 @@ public class WeatherController {
     public ResponseEntity<Map<String, Object>> getWeather(@PathVariable String city) {
         return ResponseEntity.ok(weatherService.getWeatherByCity(city));
     }
+
+    @GetMapping
+    public ResponseEntity<Map<String, Object>> getWeatherByCoordinates(
+            @RequestParam double latitude,
+            @RequestParam double longitude
+    ) {
+        if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Tọa độ sân bay không hợp lệ"));
+        }
+        return ResponseEntity.ok(weatherService.getWeatherByCoordinates(latitude, longitude));
+    }
 }

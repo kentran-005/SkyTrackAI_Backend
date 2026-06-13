@@ -25,11 +25,15 @@ public class JwtUtil {
 
     // Tạo Token từ email và role
     public String generateToken(String email, String role) {
+        return generateToken(email, role, expirationMs);
+    }
+
+    public String generateToken(String email, String role, long customExpirationMs) {
         return Jwts.builder()
                 .subject(email)
                 .claim("role", role)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expirationMs))
+                .expiration(new Date(System.currentTimeMillis() + customExpirationMs))
                 .signWith(getSigningKey())
                 .compact();
     }

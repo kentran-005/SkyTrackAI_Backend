@@ -25,7 +25,7 @@ public class AIController {
     // API Summary: Tóm tắt hoạt động sân bay
     @GetMapping("/summary")
     public ResponseEntity<Map<String, String>> getDailySummary() {
-        // Mình viết sẵn câu lệnh (prompt) để AI tóm tắt
+        // câu lệnh (prompt) để AI tóm tắt
         String prompt = "Hãy đóng vai trò là một hệ thống quản lý sân bay thông minh. " +
                 "Hãy đưa ra một bản tóm tắt ngắn gọn (khoảng 3 câu) về tình hình chuyến bay hôm nay " +
                 "với các số liệu giả định như: 1500 chuyến bay, 87 chuyến delay, 12 chuyến hủy, tỷ lệ đúng giờ 94%. " +

@@ -34,6 +34,22 @@ public class User {
     @Enumerated(EnumType.STRING)
     private UserRole role; // GUEST, USER, ADMIN
 
+    private String location = "Vietnam";
+
+    private String language = "English";
+
+    private boolean emailNotifications = true;
+
+    private boolean pushNotifications = true;
+
+    private boolean flightAlerts = true;
+
+    private boolean priceAlerts = false;
+
+    private int failedLoginAttempts;
+
+    private LocalDateTime lockedUntil;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
