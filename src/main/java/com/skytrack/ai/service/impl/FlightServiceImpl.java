@@ -3,6 +3,9 @@ package com.skytrack.ai.service.impl;
 import com.skytrack.ai.entity.Airline;
 import com.skytrack.ai.entity.Airport;
 import com.skytrack.ai.entity.Flight;
+import com.skytrack.ai.exception.ResourceNotFoundException;
+import com.skytrack.ai.repository.AirlineRepository;
+import com.skytrack.ai.repository.AirportRepository;
 import com.skytrack.ai.repository.FlightRepository;
 import com.skytrack.ai.service.FlightService;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +28,8 @@ import java.util.Map;
 public class FlightServiceImpl implements FlightService {
 
     private final FlightRepository flightRepository;
+    private final AirlineRepository airlineRepository;
+    private final AirportRepository airportRepository;
 
     @Value("${app.aviationstack.api-key:}")
     private String aviationStackApiKey;
@@ -44,8 +49,32 @@ public class FlightServiceImpl implements FlightService {
 
     @Override
     public Flight updateFlight(Long id, Flight flight) {
-        flight.setId(id);
-        return flightRepository.save(flight);
+        Flight existing = flightRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Flight not found"));
+
+        if (flight.getFlightCode() != null) existing.setFlightCode(flight.getFlightCode().trim());
+        if (flight.getDepartureTime() != null) existing.setDepartureTime(flight.getDepartureTime());
+        if (flight.getArrivalTime() != null) existing.setArrivalTime(flight.getArrivalTime());
+        if (flight.getStatus() != null) existing.setStatus(flight.getStatus());
+        if (flight.getPrice() != null) existing.setPrice(flight.getPrice());
+        if (flight.getType() != null) existing.setType(flight.getType());
+        if (flight.getGate() != null) existing.setGate(flight.getGate());
+        if (flight.getTerminal() != null) existing.setTerminal(flight.getTerminal());
+
+        if (flight.getAirline() != null && flight.getAirline().getId() != null) {
+            existing.setAirline(airlineRepository.findById(flight.getAirline().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Airline not found")));
+        }
+        if (flight.getDepartureAirport() != null && flight.getDepartureAirport().getId() != null) {
+            existing.setDepartureAirport(airportRepository.findById(flight.getDepartureAirport().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Departure airport not found")));
+        }
+        if (flight.getArrivalAirport() != null && flight.getArrivalAirport().getId() != null) {
+            existing.setArrivalAirport(airportRepository.findById(flight.getArrivalAirport().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Arrival airport not found")));
+        }
+
+        return flightRepository.save(existing);
     }
 
     @Override

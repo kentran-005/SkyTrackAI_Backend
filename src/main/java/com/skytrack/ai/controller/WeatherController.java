@@ -16,7 +16,7 @@ public class WeatherController {
 
     @GetMapping("/{city}")
     public ResponseEntity<Map<String, Object>> getWeather(@PathVariable String city) {
-        return ResponseEntity.ok(weatherService.getWeatherByCity(city));
+        return weatherResponse(weatherService.getWeatherByCity(city));
     }
 
     @GetMapping
@@ -27,6 +27,13 @@ public class WeatherController {
         if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
             return ResponseEntity.badRequest().body(Map.of("error", "Tọa độ sân bay không hợp lệ"));
         }
-        return ResponseEntity.ok(weatherService.getWeatherByCoordinates(latitude, longitude));
+        return weatherResponse(weatherService.getWeatherByCoordinates(latitude, longitude));
+    }
+
+    private ResponseEntity<Map<String, Object>> weatherResponse(Map<String, Object> weather) {
+        if (weather.containsKey("error")) {
+            return ResponseEntity.status(502).body(weather);
+        }
+        return ResponseEntity.ok(weather);
     }
 }

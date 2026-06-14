@@ -3,9 +3,9 @@ server:
 
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/skytrack_ai?useSSL=false&serverTimezone=Asia/Ho_Chi_Minh&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://thomas.proxy.rlwy.net:48830/railway
     username: root
-    password: ken@091005
+    password: wJZTTJsvKivwRdpZJImorrmOlRKkJWEt
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -17,14 +17,13 @@ spring:
       hibernate:
         format_sql: true
 
-# ==========================================
-# CẤU HÌNH API BÊN NGOÀI
-# Chữ 'app:' phải nằm sát lề trái (Cột 0), không được cách ra!
-# ==========================================
 app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+
   openweather:
-    api-key: 449ef6c7a8a4af5f0698ada61d856984
-    url: https://api.openweathermap.org/data/2.5/weather
+    api-key: ${OPENWEATHER_API_KEY:}
+    url: ${OPENWEATHER_BASE_URL:https://api.openweathermap.org/data/2.5}/weather
 
   aviationstack:
     api-key: 511286d98093099eaba58df0200be2a
@@ -32,14 +31,16 @@ app:
 
   opensky:
     base-url: https://opensky-network.org/api
-    username: tranthong1765@gmail.com
-    password: Ken@091005
-    cache-refresh-seconds: 60
+    token-url: https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token
+    client-id: ${OPENSKY_CLIENT_ID:}
+    client-secret: ${OPENSKY_CLIENT_SECRET:}
+    cache-refresh-seconds: ${OPENSKY_CACHE_REFRESH_SECONDS:90}
+    anonymous-cache-refresh-seconds: ${OPENSKY_ANONYMOUS_CACHE_REFRESH_SECONDS:660}
 
   gemini:
-    api-key: AQ.Ab8RN6I4bKyTE4qSU_MrixmCmiWoyc34zZBwzbSyUDj8x0GwcA
-    url: https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent
+    api-key: ${GEMINI_API_KEY:}
+    url: ${GEMINI_API_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent}
 
   jwt:
     secret: SkyTrackAISuperSecretKeyForCompetition2024MustBe256BitsLong!!
-    expiration-ms: 86400000 # Thời gian sống của Token: 24 giờ (tính bằng mili-giây)
+    expiration-ms: 86400000 # thời gian sống của Token: 24 giờ (Tinh bằng mili-giây)

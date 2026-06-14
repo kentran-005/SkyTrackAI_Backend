@@ -9,7 +9,9 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "app.opensky")
 public class OpenSkyConfig {
     private String baseUrl = "https://opensky-network.org/api";
-    private String username;
-    private String password;
-    private int cacheRefreshSeconds = 20;
+    private String tokenUrl = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token";
+    private String clientId;
+    private String clientSecret;
+    private int cacheRefreshSeconds = 90;
+    private int anonymousCacheRefreshSeconds = 660;
 }

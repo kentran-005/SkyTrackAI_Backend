@@ -2,7 +2,9 @@ package com.skytrack.ai.external;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.skytrack.ai.exception.ExternalServiceException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -15,6 +17,7 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class GeminiService {
 
     @Value("${app.gemini.api-key}")
@@ -28,7 +31,10 @@ public class GeminiService {
     // Hàm chính: Gửi câu hỏi và nhận câu trả lời từ Gemini
     public String askGemini(String userPrompt) {
         if (userPrompt == null || userPrompt.isBlank()) {
-            return "Vui lòng nhập câu hỏi.";
+            throw new IllegalArgumentException("Question is required");
+        }
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new ExternalServiceException("Gemini API key is not configured");
         }
 
         String requestUrl = apiUrl + "?key=" + apiKey;
@@ -52,12 +58,16 @@ public class GeminiService {
             JsonNode root = objectMapper.readTree(response);
             JsonNode textNode = root.path("candidates").path(0).path("content").path("parts").path(0).path("text");
             if (textNode.isMissingNode() || textNode.asText().isBlank()) {
-                return "AI chưa trả về nội dung phù hợp.";
+                throw new ExternalServiceException("Gemini returned an empty response");
             }
             return textNode.asText();
 
         } catch (Exception e) {
-            return "Xin lỗi, AI đang gặp sự cố: " + e.getMessage();
+            if (e instanceof ExternalServiceException externalServiceException) {
+                throw externalServiceException;
+            }
+            log.error("Gemini request failed: {}", e.getMessage());
+            throw new ExternalServiceException("Gemini is unavailable or rejected the configured API key");
         }
     }
 }

@@ -3,6 +3,7 @@ package com.skytrack.ai.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.skytrack.ai.external.GeminiService;
+import com.skytrack.ai.exception.ExternalServiceException;
 import com.skytrack.ai.repository.FlightRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -53,6 +54,8 @@ public class AISmartSearchController {
                 return ResponseEntity.ok(Map.of("flights", flightRepository.findAll(), "aiMessage", "Showing all available flights"));
             }
 
+        } catch (ExternalServiceException e) {
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("AI Search failed: " + e.getMessage());
         }

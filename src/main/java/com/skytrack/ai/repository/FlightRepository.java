@@ -1,6 +1,7 @@
 package com.skytrack.ai.repository;
 
 import com.skytrack.ai.entity.Flight;
+import com.skytrack.ai.entity.FlightStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -8,6 +9,10 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 
 public interface FlightRepository extends JpaRepository<Flight, Long> {
+    long countByStatus(FlightStatus status);
+
+    long countByStatusIn(List<FlightStatus> statuses);
+
     @Query("SELECT f FROM Flight f " +
             "JOIN f.airline a " +
             "JOIN f.departureAirport da " +

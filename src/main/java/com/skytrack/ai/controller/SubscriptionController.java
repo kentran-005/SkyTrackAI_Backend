@@ -57,39 +57,6 @@ public class SubscriptionController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/user/{userId}")
-    public ResponseEntity<List<FlightSubscription>> getUserSubscriptions(@PathVariable Long userId) {
-        return ResponseEntity.ok(subscriptionRepository.findByUserId(userId));
-    }
-
-    @PostMapping
-    public ResponseEntity<?> subscribeFlight(@RequestBody Map<String, Long> body) {
-        Long userId = body.get("userId");
-        Long flightId = body.get("flightId");
-
-        if (userId == null || flightId == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "userId and flightId are required"));
-        }
-
-        if(subscriptionRepository.existsByUserIdAndFlightId(userId, flightId)) {
-            return ResponseEntity.badRequest().body(Map.of("error", "Already subscribed"));
-        }
-
-        FlightSubscription sub = new FlightSubscription();
-        sub.setUserId(userId);
-        Flight flight = new Flight();
-        flight.setId(flightId);
-        sub.setFlight(flight);
-
-        return ResponseEntity.ok(subscriptionRepository.save(sub));
-    }
-
-    @DeleteMapping
-    public ResponseEntity<Void> unsubscribeFlight(@RequestParam Long userId, @RequestParam Long flightId) {
-        subscriptionRepository.deleteByUserIdAndFlightId(userId, flightId);
-        return ResponseEntity.ok().build();
-    }
-
     private User currentUser(Authentication authentication) {
         if (authentication == null || authentication.getName() == null) {
             throw new IllegalArgumentException("Authenticated user is required");

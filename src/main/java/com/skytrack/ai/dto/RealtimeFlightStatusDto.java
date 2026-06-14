@@ -8,6 +8,8 @@ public record RealtimeFlightStatusDto(
         int aircraftCount,
         LocalDateTime lastSuccessfulUpdate,
         LocalDateTime nextRefreshAllowedAt,
-        String message
+        String message,
+        String authenticationMode,
+        String authenticationMessage
 ) {
 }

@@ -9,8 +9,12 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
@@ -33,20 +37,20 @@ public class OpenSkyService {
     private RestClient restClient;
     private volatile LocalDateTime nextRefreshAllowedAt = LocalDateTime.MIN;
     private volatile String lastFetchMessage = "Waiting for the first OpenSky refresh";
+    private volatile String lastAuthenticationMessage = "OpenSky OAuth credentials have not been checked yet.";
+    private volatile boolean lastRequestUsedOAuth = false;
+    private volatile String accessToken;
+    private volatile LocalDateTime accessTokenExpiresAt = LocalDateTime.MIN;
 
     @PostConstruct
     public void init() {
-        RestClient.Builder builder = restClientBuilder.baseUrl(config.getBaseUrl());
+        this.restClient = restClientBuilder.baseUrl(config.getBaseUrl()).build();
 
-        if (hasOpenSkyCredentials()) {
-            builder.defaultHeaders(headers -> headers.setBasicAuth(config.getUsername(), config.getPassword()));
+        if (hasOAuthCredentials()) {
+            log.info("OpenSky RestClient initialized with OAuth2 authentication");
         } else {
-            log.warn("OpenSky credentials are not configured. Realtime flights will use public anonymous access.");
+            log.warn("OpenSky OAuth credentials are not configured. Realtime flights will use rate-limited anonymous access.");
         }
-
-        this.restClient = builder.build();
-
-        log.info("OpenSky RestClient initialized with base URL {}", config.getBaseUrl());
     }
 
     /**
@@ -66,7 +70,7 @@ public class OpenSkyService {
                     : ChronoUnit.SECONDS.between(lastUpdateTime, LocalDateTime.now());
 
             // Nếu dữ liệu còn mới (< 60s), trả về DB ngay lập tức (KHÔNG GỌI API)
-            if (secondsOld < config.getCacheRefreshSeconds()) {
+            if (secondsOld < refreshIntervalSeconds()) {
                 log.debug("Trả dữ liệu từ DB (Cập nhật cách đây {} giây)", secondsOld);
                 return mapEntitiesToDtos(currentFlights);
             }
@@ -96,9 +100,13 @@ public class OpenSkyService {
 
             // OpenSky trả về JSON dạng: {"time": 12345, "states": [[...], [...]]}
             // Nên ta dùng Map để bắt dữ liệu
-            Map<String, Object> response = restClient.get()
-                    .uri(url)
-                    .retrieve()
+            RestClient.RequestHeadersSpec<?> request = restClient.get().uri(url);
+            String token = getAccessToken();
+            if (token != null) {
+                request = request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+            }
+            boolean requestUsedOAuth = token != null;
+            Map<String, Object> response = request.retrieve()
                     .body(new ParameterizedTypeReference<Map<String, Object>>() {});
 
             if (response != null && response.containsKey("states")) {
@@ -119,16 +127,17 @@ public class OpenSkyService {
 
                     realtimeFlightRepository.flush();
 
-                    nextRefreshAllowedAt = now.plusSeconds(config.getCacheRefreshSeconds());
-                    lastFetchMessage = "Live OpenSky data";
+                    nextRefreshAllowedAt = now.plusSeconds(refreshIntervalSeconds());
+                    lastRequestUsedOAuth = requestUsedOAuth;
+                    lastFetchMessage = "Live OpenSky data via " + authenticationMode();
                     log.info("✅ Đã lưu {} chuyến bay từ OpenSky vào Database", flightEntities.size());
                 } else {
-                    nextRefreshAllowedAt = now.plusSeconds(config.getCacheRefreshSeconds());
+                    nextRefreshAllowedAt = now.plusSeconds(refreshIntervalSeconds());
                     lastFetchMessage = "OpenSky returned no aircraft for the configured area";
                     log.warn("⚠️ OpenSky trả về dữ liệu rỗng (Có thể khu vực này không có chuyến bay nào).");
                 }
             } else {
-                nextRefreshAllowedAt = LocalDateTime.now().plusSeconds(config.getCacheRefreshSeconds());
+                nextRefreshAllowedAt = LocalDateTime.now().plusSeconds(refreshIntervalSeconds());
                 lastFetchMessage = "OpenSky returned an invalid response. Showing cached traffic.";
                 log.warn("OpenSky response did not contain a states field.");
             }
@@ -140,11 +149,16 @@ public class OpenSkyService {
                 log.warn("OpenSky rate limited this server. Next refresh after {} seconds.", retrySeconds);
                 return;
             }
-            nextRefreshAllowedAt = LocalDateTime.now().plusSeconds(config.getCacheRefreshSeconds());
+            if (e.getStatusCode().value() == 401) {
+                accessToken = null;
+                accessTokenExpiresAt = LocalDateTime.MIN;
+                lastAuthenticationMessage = "OpenSky rejected the Bearer token. A new token will be requested on the next refresh.";
+            }
+            nextRefreshAllowedAt = LocalDateTime.now().plusSeconds(refreshIntervalSeconds());
             lastFetchMessage = "OpenSky request failed with HTTP " + e.getStatusCode().value();
             log.error("Failed to fetch OpenSky flights: HTTP {}", e.getStatusCode().value());
         } catch (Exception e) {
-            nextRefreshAllowedAt = LocalDateTime.now().plusSeconds(config.getCacheRefreshSeconds());
+            nextRefreshAllowedAt = LocalDateTime.now().plusSeconds(refreshIntervalSeconds());
             lastFetchMessage = "OpenSky is temporarily unavailable. Showing cached traffic.";
             log.error("Failed to fetch OpenSky flights", e);
         }
@@ -161,7 +175,7 @@ public class OpenSkyService {
         long ageSeconds = lastUpdate == null
                 ? Long.MAX_VALUE
                 : ChronoUnit.SECONDS.between(lastUpdate, LocalDateTime.now());
-        boolean stale = lastUpdate == null || ageSeconds >= config.getCacheRefreshSeconds() * 2L;
+        boolean stale = lastUpdate == null || ageSeconds >= refreshIntervalSeconds() * 2L;
 
         return new RealtimeFlightStatusDto(
                 !stale,
@@ -169,7 +183,9 @@ public class OpenSkyService {
                 flights.size(),
                 lastUpdate,
                 nextRefreshAllowedAt.equals(LocalDateTime.MIN) ? null : nextRefreshAllowedAt,
-                stale ? lastFetchMessage : "Live OpenSky data"
+                stale ? lastFetchMessage : "Live OpenSky data via " + authenticationMode(),
+                authenticationMode(),
+                lastAuthenticationMessage
         );
     }
 
@@ -227,8 +243,86 @@ public class OpenSkyService {
         return index < list.size() && list.get(index) != null && Boolean.parseBoolean(list.get(index).toString());
     }
 
-    private boolean hasOpenSkyCredentials() {
-        return config.getUsername() != null && !config.getUsername().isBlank()
-                && config.getPassword() != null && !config.getPassword().isBlank();
+    private synchronized String getAccessToken() {
+        if (!hasOAuthCredentials()) {
+            lastAuthenticationMessage = "OpenSky OAuth credentials are not configured; using anonymous access.";
+            return null;
+        }
+        if (accessToken != null && LocalDateTime.now().isBefore(accessTokenExpiresAt.minusSeconds(30))) {
+            lastAuthenticationMessage = "OpenSky OAuth token is active.";
+            return accessToken;
+        }
+
+        try {
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("grant_type", "client_credentials");
+            form.add("client_id", config.getClientId());
+            form.add("client_secret", config.getClientSecret());
+
+            Map<String, Object> response = RestClient.create()
+                    .post()
+                    .uri(config.getTokenUrl())
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+
+            Object token = response == null ? null : response.get("access_token");
+            if (token == null) {
+                lastAuthenticationMessage = "OpenSky OAuth response did not contain an access token; using anonymous access.";
+                log.warn("OpenSky OAuth response did not contain an access token. Falling back to anonymous access.");
+                return null;
+            }
+
+            Object expiresInValue = response.getOrDefault("expires_in", 1800);
+            long expiresIn = expiresInValue instanceof Number number
+                    ? number.longValue()
+                    : Long.parseLong(expiresInValue.toString());
+            accessToken = token.toString();
+            accessTokenExpiresAt = LocalDateTime.now().plusSeconds(expiresIn);
+            lastAuthenticationMessage = "OpenSky OAuth token is active.";
+            return accessToken;
+        } catch (RestClientResponseException e) {
+            String errorCode = extractOAuthError(e);
+            lastAuthenticationMessage = "OpenSky OAuth failed with HTTP " + e.getStatusCode().value()
+                    + (errorCode == null ? "" : " (" + errorCode + ")")
+                    + "; using anonymous access.";
+            log.warn("Cannot obtain OpenSky OAuth token. Falling back to anonymous access: {}", lastAuthenticationMessage);
+            return null;
+        } catch (Exception e) {
+            lastAuthenticationMessage = "OpenSky OAuth request failed; using anonymous access.";
+            log.warn("Cannot obtain OpenSky OAuth token. Falling back to anonymous access: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private boolean hasOAuthCredentials() {
+        return config.getClientId() != null && !config.getClientId().isBlank()
+                && config.getClientSecret() != null && !config.getClientSecret().isBlank();
+    }
+
+    private int refreshIntervalSeconds() {
+        return hasOAuthCredentials()
+                ? Math.max(10, config.getCacheRefreshSeconds())
+                : Math.max(660, config.getAnonymousCacheRefreshSeconds());
+    }
+
+    private String authenticationMode() {
+        return lastRequestUsedOAuth ? "oauth2" : "anonymous";
+    }
+
+    private String extractOAuthError(RestClientResponseException exception) {
+        try {
+            String body = exception.getResponseBodyAsString();
+            if (body == null || body.isBlank()) return null;
+            int marker = body.indexOf("\"error\"");
+            if (marker < 0) return null;
+            int colon = body.indexOf(':', marker);
+            int firstQuote = body.indexOf('"', colon + 1);
+            int secondQuote = body.indexOf('"', firstQuote + 1);
+            return firstQuote >= 0 && secondQuote > firstQuote ? body.substring(firstQuote + 1, secondQuote) : null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

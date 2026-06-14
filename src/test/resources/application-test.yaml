@@ -19,8 +19,8 @@ app:
     url: https://example.com/aviation
   opensky:
     base-url: https://example.com/opensky
-    username:
-    password:
+    client-id:
+    client-secret:
     cache-refresh-seconds: 60
   gemini:
     api-key: test
