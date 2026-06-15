@@ -4,6 +4,8 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
+import java.util.Locale;
+
 @Data
 public class RegisterRequest {
     @NotBlank(message = "Name is required")
@@ -15,5 +17,12 @@ public class RegisterRequest {
 
     @NotBlank(message = "Password is required")
     private String password;
-    // Chỉ nhận 3 trường này, hacker không thể inject "role" hay "id"
+
+    public void setName(String name) {
+        this.name = name == null ? null : name.trim();
+    }
+
+    public void setEmail(String email) {
+        this.email = email == null ? null : email.trim().toLowerCase(Locale.ROOT);
+    }
 }

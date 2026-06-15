@@ -47,7 +47,7 @@ public class ProfileController {
     ) {
         User user = currentUser(authentication);
         String email = request.email().trim().toLowerCase();
-        if (!email.equalsIgnoreCase(user.getEmail()) && userRepository.findByEmail(email).isPresent()) {
+        if (!email.equalsIgnoreCase(user.getEmail()) && userRepository.findByEmailIgnoreCase(email).isPresent()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Email is already in use"));
         }
 
@@ -98,7 +98,7 @@ public class ProfileController {
         if (authentication == null || authentication.getName() == null) {
             throw new IllegalStateException("Authenticated user is required");
         }
-        return userRepository.findByEmail(authentication.getName())
+        return userRepository.findByEmailIgnoreCase(authentication.getName())
                 .orElseThrow(() -> new IllegalArgumentException("User account was not found"));
     }
 

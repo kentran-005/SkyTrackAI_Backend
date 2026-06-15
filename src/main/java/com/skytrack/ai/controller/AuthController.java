@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 import java.time.LocalDateTime;
+import java.util.Locale;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -27,14 +28,14 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> body) {
-        String email = body.get("email");
+        String email = normalizeEmail(body.get("email"));
         String password = body.get("password");
 
-        if (email == null || email.isBlank() || password == null || password.isBlank()) {
+        if (email.isBlank() || password == null || password.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Email and password are required"));
         }
 
-        User user = userRepository.findByEmail(email).orElse(null);
+        User user = userRepository.findByEmailIgnoreCase(email).orElse(null);
 
         if (user != null && user.getLockedUntil() != null && user.getLockedUntil().isAfter(LocalDateTime.now())) {
             return ResponseEntity.status(423).body(Map.of(
@@ -78,19 +79,24 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest req) { // Dùng DTO
 
-        if (userRepository.findByEmail(req.getEmail()).isPresent()) {
+        String email = normalizeEmail(req.getEmail());
+        if (userRepository.findByEmailIgnoreCase(email).isPresent()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Email already exists"));
         }
 
         settingsService.validatePassword(req.getPassword());
 
         User user = new User();
-        user.setName(req.getName());
-        user.setEmail(req.getEmail());
+        user.setName(req.getName().trim());
+        user.setEmail(email);
         user.setPassword(passwordEncoder.encode(req.getPassword())); // Bcrypt
         user.setRole(UserRole.USER); // An toàn tuyệt đối, không sợ ghi đè
 
         userRepository.save(user);
         return ResponseEntity.ok(Map.of("message", "User registered successfully"));
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
     }
 }

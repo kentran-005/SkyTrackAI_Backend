@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Map;
@@ -48,10 +49,18 @@ public class WeatherService {
     }
 
     private Map<String, Object> requestWeather(String url, String location) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return Map.of("error", "OpenWeather API key is not configured");
+        }
         try {
             return new RestTemplate().getForObject(url, Map.class);
+        } catch (RestClientResponseException e) {
+            return Map.of(
+                    "error",
+                    "OpenWeather request failed with HTTP " + e.getStatusCode().value()
+            );
         } catch (Exception e) {
-            return Map.of("error", "Không thể lấy thời tiết cho " + location);
+            return Map.of("error", "Cannot load weather for " + location);
         }
     }
 }

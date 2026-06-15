@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -40,6 +41,15 @@ public class GlobalExceptionHandler {
     private String readableMessage(Exception ex) {
         if (ex instanceof DataIntegrityViolationException) {
             return "Request violates database constraints";
+        }
+        if (ex instanceof MethodArgumentNotValidException validationException) {
+            String message = validationException.getBindingResult().getFieldErrors().stream()
+                    .map(error -> error.getDefaultMessage() == null
+                            ? error.getField() + " is invalid"
+                            : error.getDefaultMessage())
+                    .distinct()
+                    .collect(Collectors.joining(", "));
+            return message.isBlank() ? "Invalid request" : message;
         }
         return ex.getMessage() == null || ex.getMessage().isBlank()
                 ? "Invalid request"

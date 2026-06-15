@@ -7,6 +7,7 @@ import java.util.List;
 
 public interface FlightSubscriptionRepository extends JpaRepository<FlightSubscription, Long> {
     List<FlightSubscription> findByUserId(Long userId);
+    List<FlightSubscription> findByFlightId(Long flightId);
     long countByUserId(Long userId);
     boolean existsByUserIdAndFlightId(Long userId, Long flightId);
 

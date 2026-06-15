@@ -2,10 +2,12 @@ package com.skytrack.ai.controller;
 
 import com.skytrack.ai.entity.Flight;
 import com.skytrack.ai.entity.FlightSubscription;
+import com.skytrack.ai.entity.Notification;
 import com.skytrack.ai.entity.User;
 import com.skytrack.ai.exception.ResourceNotFoundException;
 import com.skytrack.ai.repository.FlightRepository;
 import com.skytrack.ai.repository.FlightSubscriptionRepository;
+import com.skytrack.ai.repository.NotificationRepository;
 import com.skytrack.ai.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +25,7 @@ public class SubscriptionController {
     private final FlightSubscriptionRepository subscriptionRepository;
     private final UserRepository userRepository;
     private final FlightRepository flightRepository;
+    private final NotificationRepository notificationRepository;
 
     @GetMapping("/me")
     public ResponseEntity<List<FlightSubscription>> getMySubscriptions(Authentication authentication) {
@@ -44,7 +47,16 @@ public class SubscriptionController {
         FlightSubscription subscription = new FlightSubscription();
         subscription.setUserId(user.getId());
         subscription.setFlight(flight);
-        return ResponseEntity.ok(subscriptionRepository.save(subscription));
+        FlightSubscription savedSubscription = subscriptionRepository.save(subscription);
+
+        Notification notification = new Notification();
+        notification.setUserId(user.getId());
+        notification.setTitle("Flight tracking enabled");
+        notification.setMessage("You are now following " + flight.getFlightCode()
+                + ". Status changes will appear in your notifications.");
+        notificationRepository.save(notification);
+
+        return ResponseEntity.ok(savedSubscription);
     }
 
     @DeleteMapping("/me/{flightId}")
@@ -61,7 +73,7 @@ public class SubscriptionController {
         if (authentication == null || authentication.getName() == null) {
             throw new IllegalArgumentException("Authenticated user is required");
         }
-        return userRepository.findByEmail(authentication.getName())
+        return userRepository.findByEmailIgnoreCase(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User account not found"));
     }
 }

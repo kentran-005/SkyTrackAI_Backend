@@ -3,9 +3,9 @@ server:
 
 spring:
   datasource:
-    url: jdbc:mysql://thomas.proxy.rlwy.net:48830/railway
-    username: root
-    password: wJZTTJsvKivwRdpZJImorrmOlRKkJWEt
+    url: ${DB_URL:jdbc:mysql://localhost:3306/skytrack}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -26,8 +26,8 @@ app:
     url: ${OPENWEATHER_BASE_URL:https://api.openweathermap.org/data/2.5}/weather
 
   aviationstack:
-    api-key: 511286d98093099eaba58df0200be2a
-    url: http://api.aviationstack.com/v1
+    api-key: ${AVIATIONSTACK_API_KEY:}
+    url: ${AVIATIONSTACK_BASE_URL:https://api.aviationstack.com/v1}
 
   opensky:
     base-url: https://opensky-network.org/api
@@ -42,5 +42,5 @@ app:
     url: ${GEMINI_API_URL:https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent}
 
   jwt:
-    secret: SkyTrackAISuperSecretKeyForCompetition2024MustBe256BitsLong!!
-    expiration-ms: 86400000 # thời gian sống của Token: 24 giờ (Tinh bằng mili-giây)
+    secret: ${JWT_SECRET:change-this-development-secret-before-production-123456789}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}

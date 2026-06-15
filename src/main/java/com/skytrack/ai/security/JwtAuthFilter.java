@@ -30,6 +30,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
+            if (token.startsWith("mock-token-")) {
+                filterChain.doFilter(request, response);
+                return;
+            }
             try {
                 // Chỉ parse token 1 lần duy nhất
                 Claims claims = Jwts.parser()
@@ -48,7 +52,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             } catch (Exception e) {
-                logger.error("JWT Authentication failed", e);
+                logger.warn("JWT Authentication failed: " + e.getClass().getSimpleName());
             }
         }
 

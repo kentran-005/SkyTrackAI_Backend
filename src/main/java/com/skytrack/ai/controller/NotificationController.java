@@ -71,7 +71,7 @@ public class NotificationController {
         if (authentication == null || authentication.getName() == null) {
             throw new IllegalArgumentException("Authenticated user is required");
         }
-        return userRepository.findByEmail(authentication.getName())
+        return userRepository.findByEmailIgnoreCase(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User account not found"));
     }
 }

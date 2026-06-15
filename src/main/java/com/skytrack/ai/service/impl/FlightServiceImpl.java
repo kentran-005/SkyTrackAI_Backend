@@ -3,15 +3,20 @@ package com.skytrack.ai.service.impl;
 import com.skytrack.ai.entity.Airline;
 import com.skytrack.ai.entity.Airport;
 import com.skytrack.ai.entity.Flight;
+import com.skytrack.ai.entity.FlightStatus;
+import com.skytrack.ai.entity.Notification;
 import com.skytrack.ai.exception.ResourceNotFoundException;
 import com.skytrack.ai.repository.AirlineRepository;
 import com.skytrack.ai.repository.AirportRepository;
 import com.skytrack.ai.repository.FlightRepository;
+import com.skytrack.ai.repository.FlightSubscriptionRepository;
+import com.skytrack.ai.repository.NotificationRepository;
 import com.skytrack.ai.service.FlightService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -30,6 +35,8 @@ public class FlightServiceImpl implements FlightService {
     private final FlightRepository flightRepository;
     private final AirlineRepository airlineRepository;
     private final AirportRepository airportRepository;
+    private final FlightSubscriptionRepository subscriptionRepository;
+    private final NotificationRepository notificationRepository;
 
     @Value("${app.aviationstack.api-key:}")
     private String aviationStackApiKey;
@@ -44,13 +51,42 @@ public class FlightServiceImpl implements FlightService {
 
     @Override
     public Flight createFlight(Flight flight) {
+        if (flight.getAirline() == null || flight.getAirline().getId() == null) {
+            throw new IllegalArgumentException("Airline is required");
+        }
+        if (flight.getDepartureAirport() == null || flight.getDepartureAirport().getId() == null) {
+            throw new IllegalArgumentException("Departure airport is required");
+        }
+        if (flight.getArrivalAirport() == null || flight.getArrivalAirport().getId() == null) {
+            throw new IllegalArgumentException("Arrival airport is required");
+        }
+        if (flight.getDepartureAirport().getId().equals(flight.getArrivalAirport().getId())) {
+            throw new IllegalArgumentException("Departure and arrival airports must be different");
+        }
+        if (flight.getDepartureTime() == null || flight.getArrivalTime() == null
+                || !flight.getArrivalTime().isAfter(flight.getDepartureTime())) {
+            throw new IllegalArgumentException("Arrival time must be later than departure time");
+        }
+        if (flight.getFlightCode() == null || flight.getFlightCode().isBlank()) {
+            throw new IllegalArgumentException("Flight code is required");
+        }
+
+        flight.setFlightCode(flight.getFlightCode().trim().toUpperCase());
+        flight.setAirline(airlineRepository.findById(flight.getAirline().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Airline not found")));
+        flight.setDepartureAirport(airportRepository.findById(flight.getDepartureAirport().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Departure airport not found")));
+        flight.setArrivalAirport(airportRepository.findById(flight.getArrivalAirport().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Arrival airport not found")));
         return flightRepository.save(flight);
     }
 
     @Override
+    @Transactional
     public Flight updateFlight(Long id, Flight flight) {
         Flight existing = flightRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Flight not found"));
+        FlightStatus previousStatus = existing.getStatus();
 
         if (flight.getFlightCode() != null) existing.setFlightCode(flight.getFlightCode().trim());
         if (flight.getDepartureTime() != null) existing.setDepartureTime(flight.getDepartureTime());
@@ -74,7 +110,22 @@ public class FlightServiceImpl implements FlightService {
                     .orElseThrow(() -> new ResourceNotFoundException("Arrival airport not found")));
         }
 
-        return flightRepository.save(existing);
+        Flight savedFlight = flightRepository.save(existing);
+        if (flight.getStatus() != null && flight.getStatus() != previousStatus) {
+            List<Notification> notifications = subscriptionRepository.findByFlightId(id).stream()
+                    .map(subscription -> {
+                        Notification notification = new Notification();
+                        notification.setUserId(subscription.getUserId());
+                        notification.setTitle("Flight status updated");
+                        notification.setMessage(savedFlight.getFlightCode() + " is now "
+                                + formatStatus(savedFlight.getStatus()) + ".");
+                        return notification;
+                    })
+                    .toList();
+            notificationRepository.saveAll(notifications);
+        }
+
+        return savedFlight;
     }
 
     @Override
@@ -216,6 +267,11 @@ public class FlightServiceImpl implements FlightService {
                 return null;
             }
         }
+    }
+
+    private String formatStatus(FlightStatus status) {
+        String value = status.name().replace('_', ' ').toLowerCase();
+        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
     }
 
     // Hàm chuyển đổi Status của AviationStack sang Enum
