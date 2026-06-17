@@ -158,7 +158,7 @@ public class FlightServiceImpl implements FlightService {
 
         try {
             // Bản Free bắt buộc phải dùng HTTP (không phải HTTPS)
-            // Bản Free chỉ tìm được theo flight_iata (Mã chuyến bay VN220)
+            // Bản Free chỉ tìm được theo flight_iata (VD: Mã chuyến bay VN220)
             String url = UriComponentsBuilder.fromUriString(aviationStackUrl + "/flights")
                     .queryParam("access_key", aviationStackApiKey)
                     .queryParam("flight_iata", normalizedQuery)

@@ -5,8 +5,10 @@ import com.skytrack.ai.service.AirlineService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/airlines")
@@ -28,6 +30,14 @@ public class AirlineController {
     @PutMapping("/{id}")
     public ResponseEntity<Airline> updateAirline(@PathVariable Long id, @RequestBody Airline airline) {
         return ResponseEntity.ok(airlineService.updateAirline(id, airline));
+    }
+
+    @PutMapping("/{id}/logo")
+    public ResponseEntity<Map<String, String>> uploadLogo(
+            @PathVariable Long id,
+            @RequestParam("logo") MultipartFile file) {
+        String logoUrl = airlineService.updateLogo(id, file);
+        return ResponseEntity.ok(Map.of("logo", logoUrl));
     }
 
     @DeleteMapping("/{id}")
