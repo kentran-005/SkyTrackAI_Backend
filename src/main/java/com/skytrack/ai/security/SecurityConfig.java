@@ -75,6 +75,11 @@ public class SecurityConfig {
                         // Phân quyền bảo mật cho ADMIN thao tác ghi/xóa dữ liệu
                         .requestMatchers("/api/admin/**", "/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/**", "/api/v1/users/**").hasRole("ADMIN")
+                        .requestMatchers(
+                                "/api/profile/**",
+                                "/api/subscriptions/**",
+                                "/api/notifications/**"
+                        ).authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/**", "/api/v1/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/**", "/api/v1/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/**", "/api/v1/**").hasRole("ADMIN")

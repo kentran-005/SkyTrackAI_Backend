@@ -70,19 +70,36 @@ public class AirlineServiceImpl implements AirlineService {
 
             String oldLogo = existing.getLogo();
             if (oldLogo != null && oldLogo.startsWith("/logos/")) {
-                Path oldFile = Paths.get(uploadDir, oldLogo.replace("/logos/", ""));
+                Path oldFile = Paths.get(uploadDir)
+                        .toAbsolutePath()
+                        .normalize()
+                        .resolve(oldLogo.replace("/logos/", ""))
+                        .normalize();
                 Files.deleteIfExists(oldFile);
             }
 
             // 3. Tạo tên file unique: vd "1_1718612345678.png"
             String ext = StringUtils.getFilenameExtension(file.getOriginalFilename());
+            if (ext == null || ext.isBlank()) {
+                ext = switch (contentType) {
+                    case "image/png" -> "png";
+                    case "image/jpeg" -> "jpg";
+                    case "image/webp" -> "webp";
+                    case "image/svg+xml" -> "svg";
+                    default -> throw new IllegalArgumentException("Invalid file extension");
+                };
+            }
             String fileName = id + "_" + System.currentTimeMillis() + "." + ext;
 
             // 4. Tạo thư mục nếu chưa có & lưu file
-            Path uploadPath = Paths.get(uploadDir);
-            if (!Files.exists(uploadPath)) Files.createDirectories(uploadPath);
+            Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
+            Files.createDirectories(uploadPath);
+            Path targetFile = uploadPath.resolve(fileName).normalize();
+            if (!targetFile.startsWith(uploadPath)) {
+                throw new IllegalArgumentException("Invalid logo file name");
+            }
             Files.copy(file.getInputStream(),
-                    uploadPath.resolve(fileName),
+                    targetFile,
                     StandardCopyOption.REPLACE_EXISTING);
 
             // 5. Cập nhật DB

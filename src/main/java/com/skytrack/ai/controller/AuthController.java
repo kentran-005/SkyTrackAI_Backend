@@ -72,7 +72,9 @@ public class AuthController {
                 "token", token,
                 "email", user.getEmail(),
                 "role", user.getRole(),
-                "name", user.getName()
+                "name", user.getName() == null || user.getName().isBlank()
+                        ? user.getEmail()
+                        : user.getName()
         ));
     }
 

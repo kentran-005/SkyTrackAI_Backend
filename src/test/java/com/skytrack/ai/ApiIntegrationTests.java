@@ -6,6 +6,7 @@ import com.skytrack.ai.entity.Airport;
 import com.skytrack.ai.entity.Flight;
 import com.skytrack.ai.entity.FlightStatus;
 import com.skytrack.ai.entity.Notification;
+import com.skytrack.ai.entity.PasswordResetCode;
 import com.skytrack.ai.entity.User;
 import com.skytrack.ai.entity.UserRole;
 import com.skytrack.ai.repository.AirlineRepository;
@@ -13,6 +14,7 @@ import com.skytrack.ai.repository.AirportRepository;
 import com.skytrack.ai.repository.FlightRepository;
 import com.skytrack.ai.repository.FlightSubscriptionRepository;
 import com.skytrack.ai.repository.NotificationRepository;
+import com.skytrack.ai.repository.PasswordResetCodeRepository;
 import com.skytrack.ai.repository.UserRepository;
 import com.skytrack.ai.security.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,12 +23,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -66,10 +73,20 @@ class ApiIntegrationTests {
     private NotificationRepository notificationRepository;
 
     @Autowired
+    private PasswordResetCodeRepository resetCodeRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
     private JwtUtil jwtUtil;
+
+    @MockitoBean
+    private JavaMailSender mailSender;
 
     @BeforeEach
     void clearData() {
+        resetCodeRepository.deleteAll();
         notificationRepository.deleteAll();
         subscriptionRepository.deleteAll();
         flightRepository.deleteAll();
@@ -124,6 +141,59 @@ class ApiIntegrationTests {
                         ))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("Invalid email or password"));
+    }
+
+    @Test
+    void passwordResetRequestDoesNotRevealWhetherEmailExists() throws Exception {
+        mockMvc.perform(post("/api/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("email", "missing@example.com"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("If the account exists, a reset code has been sent."));
+    }
+
+    @Test
+    void passwordResetRequestSendsEmailForExistingAccount() throws Exception {
+        userRepository.save(user("Traveler", "traveler@example.com"));
+
+        mockMvc.perform(post("/api/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("email", "traveler@example.com"))))
+                .andExpect(status().isOk());
+
+        verify(mailSender).send(any(org.springframework.mail.SimpleMailMessage.class));
+    }
+
+    @Test
+    void passwordResetCodeChangesPassword() throws Exception {
+        User user = user("Traveler", "traveler@example.com");
+        user.setPassword(passwordEncoder.encode("OldStrongPass1!"));
+        userRepository.save(user);
+
+        PasswordResetCode resetCode = new PasswordResetCode();
+        resetCode.setEmail(user.getEmail());
+        resetCode.setCodeHash(passwordEncoder.encode("123456"));
+        resetCode.setExpiresAt(LocalDateTime.now().plusMinutes(10));
+        resetCodeRepository.save(resetCode);
+
+        mockMvc.perform(post("/api/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "email", user.getEmail(),
+                                "code", "123456",
+                                "newPassword", "NewStrongPass2!"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Password changed successfully"));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "email", user.getEmail(),
+                                "password", "NewStrongPass2!"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isNotEmpty());
     }
 
     @Test
