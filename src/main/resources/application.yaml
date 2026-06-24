@@ -49,6 +49,8 @@ app:
     client-secret: ${OPENSKY_CLIENT_SECRET:}
     cache-refresh-seconds: ${OPENSKY_CACHE_REFRESH_SECONDS:90}
     anonymous-cache-refresh-seconds: ${OPENSKY_ANONYMOUS_CACHE_REFRESH_SECONDS:660}
+    scheduler-enabled: ${OPENSKY_SCHEDULER_ENABLED:true}
+    scheduler-delay-ms: ${OPENSKY_SCHEDULER_DELAY_MS:15000}
 
   gemini:
     api-key: ${GEMINI_API_KEY:}

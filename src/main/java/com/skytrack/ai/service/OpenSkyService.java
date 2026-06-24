@@ -11,6 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
@@ -19,8 +21,8 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.Map;
@@ -44,7 +46,10 @@ public class OpenSkyService {
 
     @PostConstruct
     public void init() {
-        this.restClient = restClientBuilder.baseUrl(config.getBaseUrl()).build();
+        this.restClient = restClientBuilder
+                .baseUrl(config.getBaseUrl())
+                .requestFactory(openSkyRequestFactory())
+                .build();
 
         if (hasOAuthCredentials()) {
             log.info("OpenSky RestClient initialized with OAuth2 authentication");
@@ -56,36 +61,33 @@ public class OpenSkyService {
     /**
      * Lấy dữ liệu chuyến bay (Ưu tiên DB, DB cũ quá thì gọi API)
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public List<FlightStateDto> getFlights() {
-        if (this.restClient == null) return Collections.emptyList();
-        // 1. Kiểm tra xem trong DB có dữ liệu không
-        List<RealtimeFlight> currentFlights = realtimeFlightRepository.findAll();
-
-        if (!currentFlights.isEmpty()) {
-            // 2. Kiểm tra xem dữ liệu đã cũ chưa (lấy mốc thời gian của bản ghi đầu tiên)
-            LocalDateTime lastUpdateTime = currentFlights.get(0).getLastUpdated();
-            long secondsOld = lastUpdateTime == null
-                    ? Long.MAX_VALUE
-                    : ChronoUnit.SECONDS.between(lastUpdateTime, LocalDateTime.now());
-
-            // Nếu dữ liệu còn mới (< 60s), trả về DB ngay lập tức (KHÔNG GỌI API)
-            if (secondsOld < refreshIntervalSeconds()) {
-                log.debug("Trả dữ liệu từ DB (Cập nhật cách đây {} giây)", secondsOld);
-                return mapEntitiesToDtos(currentFlights);
-            }
-        }
-
-        // 3. Nếu DB trống HOẶC dữ liệu đã quá cũ -> Gọi API OpenSky
-        log.info("Dữ liệu DB trống hoặc quá cũ. Đang gọi API OpenSky...");
-        if (LocalDateTime.now().isAfter(nextRefreshAllowedAt)) {
-            fetchAndSaveToDatabase();
-        } else {
-            log.debug("OpenSky refresh paused until {}", nextRefreshAllowedAt);
-        }
-
-        // 4. Trả về dữ liệu mới vừa được cập nhật vào DB
         return mapEntitiesToDtos(realtimeFlightRepository.findAll());
+    }
+
+    @Scheduled(
+            fixedDelayString = "${app.opensky.scheduler-delay-ms:15000}",
+            initialDelayString = "${app.opensky.scheduler-delay-ms:15000}"
+    )
+    @Transactional
+    public void refreshFlightsInBackground() {
+        if (!config.isSchedulerEnabled() || this.restClient == null) return;
+        if (LocalDateTime.now().isBefore(nextRefreshAllowedAt)) return;
+
+        List<RealtimeFlight> currentFlights = realtimeFlightRepository.findAll();
+        LocalDateTime lastUpdate = currentFlights.stream()
+                .map(RealtimeFlight::getLastUpdated)
+                .filter(java.util.Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
+        long secondsOld = lastUpdate == null
+                ? Long.MAX_VALUE
+                : ChronoUnit.SECONDS.between(lastUpdate, LocalDateTime.now());
+        if (!currentFlights.isEmpty() && secondsOld < refreshIntervalSeconds()) return;
+
+        log.info("Realtime cache is stale. Refreshing OpenSky in the background...");
+        fetchAndSaveToDatabase();
     }
 
     /**
@@ -259,7 +261,9 @@ public class OpenSkyService {
             form.add("client_id", config.getClientId());
             form.add("client_secret", config.getClientSecret());
 
-            Map<String, Object> response = RestClient.create()
+            Map<String, Object> response = RestClient.builder()
+                    .requestFactory(openSkyRequestFactory())
+                    .build()
                     .post()
                     .uri(config.getTokenUrl())
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
@@ -299,6 +303,13 @@ public class OpenSkyService {
     private boolean hasOAuthCredentials() {
         return config.getClientId() != null && !config.getClientId().isBlank()
                 && config.getClientSecret() != null && !config.getClientSecret().isBlank();
+    }
+
+    private SimpleClientHttpRequestFactory openSkyRequestFactory() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(3));
+        requestFactory.setReadTimeout(Duration.ofSeconds(7));
+        return requestFactory;
     }
 
     private int refreshIntervalSeconds() {

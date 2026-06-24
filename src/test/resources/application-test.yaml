@@ -22,6 +22,7 @@ app:
     client-id:
     client-secret:
     cache-refresh-seconds: 60
+    scheduler-enabled: false
   gemini:
     api-key: test
     url: https://example.com/gemini

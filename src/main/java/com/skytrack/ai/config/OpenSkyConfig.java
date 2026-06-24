@@ -14,4 +14,6 @@ public class OpenSkyConfig {
     private String clientSecret;
     private int cacheRefreshSeconds = 90;
     private int anonymousCacheRefreshSeconds = 660;
+    private boolean schedulerEnabled = true;
+    private long schedulerDelayMs = 15000;
 }
